@@ -161,7 +161,11 @@
                 startPt = [self.superview convertPoint:startPt fromView:self];
                 CGFloat rotainRadian = [self radianForPoint1:startPt point2:_90Pt];
                 _rotaionRadian += rotainRadian;
-                [self setTransform:CGAffineTransformMakeRotation(_rotaionRadian)];
+                
+                [UIView animateWithDuration:0.2
+                                 animations:^{
+                                     [self setTransform:CGAffineTransformMakeRotation(_rotaionRadian)];
+                                 }];
                 
                 self.titleLabel.text = model.title;
                 break;
