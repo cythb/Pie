@@ -10,10 +10,13 @@
 
 @class ViewController;
 
-@interface AppDelegate : UIResponder <UIApplicationDelegate>
+@interface AppDelegate : UIResponder <UIApplicationDelegate>{
+    UIWindow *_window;
+    ViewController *_viewController;
+}
 
-@property (strong, nonatomic) UIWindow *window;
+@property (retain, nonatomic) UIWindow *window;
 
-@property (strong, nonatomic) ViewController *viewController;
+@property (retain, nonatomic) ViewController *viewController;
 
 @end
