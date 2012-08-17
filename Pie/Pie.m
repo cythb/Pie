@@ -8,6 +8,9 @@
 
 #import "Pie.h"
 #import <CoreGraphics/CoreGraphics.h>
+#import <QuartzCore/QuartzCore.h>
+
+#define kAcceleration 20
 
 @interface PieDataModel : NSObject{
     NSString *_title;
@@ -50,6 +53,9 @@
     CGPoint _90Pt;
     
     UILabel *_titleLabel;
+    CGFloat _deltaRadian;
+    NSTimeInterval _lastTime;
+    NSTimeInterval _deltaTime;
 }
 @property (nonatomic, retain)UIPanGestureRecognizer *panGR;
 @property (nonatomic, retain)NSMutableArray *datas;
@@ -135,41 +141,95 @@
     if (UIGestureRecognizerStateBegan == panGR.state) {
         _prePoint = [panGR locationInView:self.superview];
         _curPoint = [panGR locationInView:self.superview];
+        
+        _lastTime = [[NSDate date] timeIntervalSince1970];
     }else if (UIGestureRecognizerStateChanged == panGR.state) {
+        NSTimeInterval curTime = [[NSDate date] timeIntervalSince1970];
+        _deltaTime = curTime - _lastTime;
+        
         _curPoint = [panGR locationInView:self.superview];
-        CGFloat radian = [self radianForPoint1:_prePoint point2:_curPoint];
-        _rotaionRadian += radian;
+        _deltaRadian = [self radianForPoint1:_prePoint point2:_curPoint];
+        _rotaionRadian += _deltaRadian;
         [self setTransform:CGAffineTransformMakeRotation(_rotaionRadian)];
-        NSLog(@"pre:%@ cur:%@ angle:%f", NSStringFromCGPoint(_prePoint), NSStringFromCGPoint(_curPoint), radian*180/3.1415926);
+        NSLog(@"pre:%@ cur:%@ angle:%f", NSStringFromCGPoint(_prePoint), NSStringFromCGPoint(_curPoint), _deltaRadian*180/3.1415926);
         
         _prePoint = _curPoint;
+        _lastTime = curTime;
     }else if (UIGestureRecognizerStateEnded == panGR.state){
-        NSInteger count = (M_PI_2-_rotaionRadian)/(2*M_PI);
-        CGFloat radian = M_PI_2-_rotaionRadian - count*2*M_PI;
-        if (radian<0) {
-            radian += 2*M_PI;
-        }
-        NSLog(@"三角指向%f", 90-radian*180/M_PI);
+        CGFloat v = _deltaRadian/_deltaTime;
+        CGFloat interval = ABS(v/kAcceleration);
+        CGFloat deltaRadian = v*interval/2;
+        NSLog(@"v:%f interval:%f deltaRadian:%f", v, interval, deltaRadian);
+//        CGFloat deltaRadian = -4*M_PI;
+        CAKeyframeAnimation *animation = [CAKeyframeAnimation animationWithKeyPath:@"transform.rotation.z"];
+        animation.delegate = self;
+        [animation setDuration:2];
+        animation.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+        NSMutableArray *values =[NSMutableArray array];
+        [values addObject:[NSNumber numberWithFloat:_rotaionRadian]];
         
-        CGPoint startPt = CGPointZero;
-        CGPoint center = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
-        for (PieDataModel *model in self.datas) {
-            if (model.startRadian<=radian &&
-                model.endRadian>radian) {
-                startPt = CGPointMake(cosf((model.startRadian+model.endRadian)/2)*160+center.x,
-                                      -sinf(-(model.startRadian+model.endRadian)/2)*160+center.y);
-                startPt = [self.superview convertPoint:startPt fromView:self];
-                CGFloat rotainRadian = [self radianForPoint1:startPt point2:_90Pt];
-                _rotaionRadian += rotainRadian;
-                
-                [UIView animateWithDuration:0.2
-                                 animations:^{
-                                     [self setTransform:CGAffineTransformMakeRotation(_rotaionRadian)];
-                                 }];
-                
-                self.titleLabel.text = model.title;
-                break;
+        if (deltaRadian>0) {
+            CGFloat tmp = _rotaionRadian;
+            while (deltaRadian>0) {
+                if (deltaRadian>=M_PI_4) {
+                    tmp += M_PI_4;
+                    [values addObject:[NSNumber numberWithFloat:tmp]];
+                }else{
+                    tmp += deltaRadian;
+                    [values addObject:[NSNumber numberWithFloat:tmp]];
+                }
+                deltaRadian -= M_PI_4;
             }
+        }else{
+            CGFloat tmpRadian = _rotaionRadian;
+            while (deltaRadian<0) {
+                if (deltaRadian<=-M_PI_4) {
+                    tmpRadian -= M_PI_4;
+                    [values addObject:[NSNumber numberWithFloat:tmpRadian]];
+                }else{
+                    tmpRadian += deltaRadian;
+                    [values addObject:[NSNumber numberWithFloat:tmpRadian]];
+                }
+                deltaRadian += M_PI_4;
+            }
+        }
+        
+        [animation setValues:values];
+        animation.removedOnCompletion = YES;
+        [self.layer addAnimation:animation forKey:@"rotate"];
+        _rotaionRadian += v*interval/2;
+    }
+}
+
+#pragma mark - CAAnimationDelegate
+- (void)animationDidStop:(CAAnimation *)anim finished:(BOOL)flag{
+    [self setTransform:CGAffineTransformMakeRotation(_rotaionRadian)];
+    
+    NSInteger count = (M_PI_2-_rotaionRadian)/(2*M_PI);
+    CGFloat radian = M_PI_2-_rotaionRadian - count*2*M_PI;
+    if (radian<0) {
+        radian += 2*M_PI;
+    }
+    NSLog(@"三角指向%f", 90-radian*180/M_PI);
+
+    CGPoint startPt = CGPointZero;
+    CGPoint center = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
+    for (PieDataModel *model in self.datas) {
+        if (model.startRadian<=radian &&
+            model.endRadian>radian) {
+            startPt = CGPointMake(cosf((model.startRadian+model.endRadian)/2)*160+center.x,
+                                  -sinf(-(model.startRadian+model.endRadian)/2)*160+center.y);
+            startPt = [self.superview convertPoint:startPt fromView:self];
+            CGFloat rotainRadian = [self radianForPoint1:startPt point2:_90Pt];
+            _rotaionRadian += rotainRadian;
+
+            [UIView animateWithDuration:0.2
+                             animations:^{
+                                 [self setTransform:CGAffineTransformMakeRotation(_rotaionRadian)];
+                             }];
+
+            self.titleLabel.text = model.title;
+            break;
         }
     }
 }
